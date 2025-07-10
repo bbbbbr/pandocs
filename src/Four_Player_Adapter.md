@@ -14,20 +14,41 @@ connection status. Afterwards, the DMG-07 enters into transmission mode
 where the Game Boys exchange data across the network.
 
 A very important thing to note is that all Game Boys transfer data across
-the DMG-07 via an external clock source. Apparently, the clock source is
-provided by the DMG-07 itself. Trying to send data via an internal clock
-results in garbage data.
+the DMG-07 in external clock mode (bit 0 of the SC register set to 0) with
+the clock source provided by the DMG-07. Trying to send data via internal
+clock mode results in garbage data and should not be used.
+
+## Power
+
+The DMG-07 will not power on until it's Player 1 cable is plugged in
+to a Game Boy link port to supply power. That cable is the only one
+permanently attached to the device and has the power pin connected
+unlike typical link port cables.
 
 ### Ping Phase
 
-When a "master" Game Boy (Player 1) is first connected to the adapter,
-setting Bit 7 of SC to 1 and setting Bit 0 of SC to 0 causes the accessory
-to send out "ping" packets periodically. All connected Game Boys will
-receive 4 bytes as part of the ping packet at a rate of about 2048 bits
-per second, or about 256 bytes per second. Essentially, the ping seems to
-run 1/4 as fast as the clock used for normal serial transfers on the DMG
-(1KB/s). The ping data looks like this:
+When the DMG-07 is powered up it will begin operation by automatically
+sending out "ping" packets periodically. In order to receive
+these ping packets a connected Game Boy should use external clock mode
+(bit 0 of SC to 0) and request a transfer (bit 7 of SC to 1).
 
+All connected Game Boys will receive 4 bytes as part of the ping packet.
+Transfer of the 4 bytes is not spread evenly over the packet interval,
+instead byte transfer is clustered at the start of the time period
+followed by a much longer delay.
+
+The power-up timing for ping packets is as follows:
+- Serial Clock period: 15.95 microseconds (62.66khz)
+- Transfer time per byte: 128 microseconds
+- Delay between bytes: 1.42 milliseconds
+- Total active transfer time for data: 4.71 milliseconds
+- Delay between packets: 12.29 milliseconds
+- Total packet interval timing: 17 milliseconds
+
+This means one packet and it's subsequent delay takes a little more time
+than a single Game Boy video frame, which is about 235 bytes per second.
+
+The ping data received by each Game Boy looks like this:
 Byte | Value | Description
 -----|-------|-------------
   1  | \$FE  | ID Byte
@@ -37,9 +58,9 @@ Byte | Value | Description
 
 3 "STAT" bytes are sent indicating the current connection status of the other
 Game Boys. Each byte is usually the same, however, sometimes the status can
-change midway through a ping, typically on STAT2 or STAT3. Each STAT byte
-looks like such:
+change midway through a ping, typically on STAT2 or STAT3. 
 
+Each STAT byte has the following fields:
 Bit | Name
 ----|------------------------
  7  | Player 4 Connected
@@ -49,20 +70,23 @@ Bit | Name
 0-2 | Player ID (1-4)
 
 The Player ID's value is determined by whichever port a Game Boy is connected
-to. As more Game Boys connect, the upper bits of the STAT bytes are turned on.
+to. As more Game Boys connect and properly reply to pings, the upper bits of
+the STAT bytes are turned on.
 
-When talking about Game Boys and the "connection", this refers to a Game Boy
-properly responding to STAT1 and STAT2 bytes when receiving a ping packet from
-the DMG-07. In this way, the Game Boy broadcasts across the Link Cable network
-that it is an active participant in communications. It also acts as a sort of
+In this way, each Game Boy broadcasts across the Link Cable network that it is
+an active participant in communications. It also acts as a sort of
 acknowledgement signal, where software can drop a Game Boy if the DMG-07
 detects an improper response during a ping, or a Game Boy simply quits the
-network. The proper response is to send \$88 *after* receiving the ID Byte and
-STAT1, in which case the upper-half of STAT1, STAT2, and STAT3 are updated to
-show that a Game Boy is "connected". If for whatever reason, the
-acknowledgement codes are not sent, the above bits are unset.
+network.
 
-Some examples of ping packets are shown below:
+The first half of a proper response is to load \$88 into the SB register
+immediately *after* receiving both the ID Byte and STAT1 such that the \$88
+response will get transferred out as STAT1 and STAT2 get clocked in. The
+upper-half of STAT1, STAT2, and STAT3 are then updated to show that a
+Game Boy is "connected". If for whatever reason, the acknowledgement codes are
+not sent, the above bits are unset.
+
+Some examples of ping packets sent byte the DMG-07 are shown below:
 
 Packet        | Description
 --------------|-------------------------------------------------------
@@ -81,21 +105,32 @@ software point of view. Because of the way the DMG-07 hardcodes player IDs
 based on which port a Game Boy is physically connected to, in the above
 situation Player 4 wouldn't suddenly become Player 2.
 
-During the ping phase, the master Game Boy is capable of setting up two
-parameters that will be used during the transmission phase. The clock rate for
-the transmission phase can be adjusted, as well as the packet size each Game
-Boy will use. The master Game Boy needs to respond with one byte for STAT2
-and STAT3 respectively. The chart below illustrates how a master Game Boy
-should respond to all bytes in a ping packet:
+The second half of a proper ping response is setting the Clock Rate and Packet Size
+parameters which configure Transmission phase behavior. 
 
+The Clock Rate and Packet Size values should be loaded into the SB register immediately
+after receiving STAT2 and STAT3 respectively, such that they will get transferred out
+as STAT3 and the ID Byte get clocked in.
+
+The chart below illustrates how Game Boys should respond to all bytes in a ping packet:
+
+The chart below illustrates how Game Boys should respond to all bytes in a ping packet.
+When a byte on the left side of the chart is received the matching byte on the right
+side of the chart should be loaded into the SB register as a reply that will 
+
+The chart below illustrates what a Game Boy should load into the SB register as a reply
+to each byte in a ping packet. For clarity, the reply in the SB register will not be
+transmitted until the next ping byte packet arrives.
 ```
 ----------------------------
-DMG-07		Game Boy
+Received     Reply the
+From         Game Boy loads
+DMG-07		   into SB reg
 ----------------------------
-\$FE	<-->	(ACK1) = \$88
-STAT1	<-->	(ACK2) = \$88	
-STAT2	<-->	(RATE) = Link Cable Speed 
-STAT3	<-->	(SIZE) = Packet Size
+\$FE	 -->	(ACK1) = \$88
+STAT1	 -->	(ACK2) = \$88	
+STAT2	 -->	(RATE) = Link Cable Speed 
+STAT3	 -->	(SIZE) = Packet Size
 ```
 
 The new clock rate is only applied when entering the transmission phase; the
