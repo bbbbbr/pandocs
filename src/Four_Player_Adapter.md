@@ -5,6 +5,13 @@ to connect for multiplayer via [serial data transfer](./Serial_Data_Transfer_(Li
 The device is primarily designed for DMG consoles, with later models
 requiring Link Cable adapters.
 
+## Power
+
+The DMG-07 will not power on until it's Player 1 cable is plugged in
+to a Game Boy link port to supply power. That cable is the only one
+permanently attached to the device and has the power pin connected
+unlike typical link port cables.
+
 ## Communication
 
 The DMG-07 protocol can be divided into 2 sections, the "ping" phase, and
@@ -17,13 +24,6 @@ A very important thing to note is that all Game Boys transfer data across
 the DMG-07 in external clock mode (bit 0 of the SC register set to 0) with
 the clock source provided by the DMG-07. Trying to send data via internal
 clock mode results in garbage data and should not be used.
-
-## Power
-
-The DMG-07 will not power on until it's Player 1 cable is plugged in
-to a Game Boy link port to supply power. That cable is the only one
-permanently attached to the device and has the power pin connected
-unlike typical link port cables.
 
 ### Ping Phase
 
@@ -41,13 +41,14 @@ The power-up timing for ping packets is as follows:
 - Serial Clock period: 15.95 microseconds (62.66khz)
 - Transfer time per byte: 128 microseconds
 - Delay between bytes: 1.42 milliseconds
-- Total active transfer time for data: 4.71 milliseconds
+- Transfer time for all bytes: 4.71 milliseconds
 - Delay between packets: 12.29 milliseconds
-- Total packet interval timing: 17 milliseconds
+- Total packet and delay time: 17 milliseconds
 
-This means one packet and it's subsequent delay takes a little more time
-than a single Game Boy video frame, which is about 235 bytes per second.
+This means one ping packet with 4 bytes and it's subsequent delay takes a little more time
+than a single Game Boy video frame.
 
+#### Ping Packets
 The ping data received by each Game Boy looks like this:
 Byte | Value | Description
 -----|-------|-------------
@@ -69,7 +70,7 @@ Bit | Name
  4  | Player 1 Connected
 0-2 | Player ID (1-4)
 
-The Player ID's value is determined by whichever port a Game Boy is connected
+The Player ID values are determined by whichever port a Game Boy is connected
 to. As more Game Boys connect and properly reply to pings, the upper bits of
 the STAT bytes are turned on.
 
@@ -106,47 +107,72 @@ based on which port a Game Boy is physically connected to, in the above
 situation Player 4 wouldn't suddenly become Player 2.
 
 The second half of a proper ping response is setting the Clock Rate and Packet Size
-parameters which configure Transmission phase behavior. 
+parameters which configure Transmission phase behavior. The Clock Rate and Packet Size
+values should be loaded into the SB register immediately after receiving STAT2 and STAT3
+respectively, such that they will get transferred out as STAT3 and the ID Byte of the
+next packet get clocked in.
 
-The Clock Rate and Packet Size values should be loaded into the SB register immediately
-after receiving STAT2 and STAT3 respectively, such that they will get transferred out
-as STAT3 and the ID Byte get clocked in.
-
-The chart below illustrates how Game Boys should respond to all bytes in a ping packet:
-
-The chart below illustrates how Game Boys should respond to all bytes in a ping packet.
+The chart below illustrates how Game Boys should respond to bytes in a ping packet.
 When a byte on the left side of the chart is received the matching byte on the right
-side of the chart should be loaded into the SB register as a reply that will 
+side of the chart should be loaded into the SB register as a reply for the next byte
+transfer.
 
-The chart below illustrates what a Game Boy should load into the SB register as a reply
-to each byte in a ping packet. For clarity, the reply in the SB register will not be
-transmitted until the next ping byte packet arrives.
+Received From<br>DMG-07 | Reply the Game Boy<br>loads into SB reg
+----------|-----------------------
+\$FE	    | (ACK1) = \$88
+STAT1     | (ACK2) = \$88	
+STAT2	    | (RATE) = Packet Timing
+STAT3	    | (SIZE) = Packet Size
+
+
+#### Clock Rate
+The Clock Rate setting affects Ping and Transmission phases in different ways.
+
+Note: In both phases the value \$00 for RATE has special behavior where it does not
+change the speed, so it should not be used.
+
+##### Ping phase
+In Ping phase the Clock Rate changes take effect immediately upon the next packet.
+RATE only adjusts the delay between packets and the timing is calcualted as follows:
 ```
-----------------------------
-Received     Reply the
-From         Game Boy loads
-DMG-07		   into SB reg
-----------------------------
-\$FE	 -->	(ACK1) = \$88
-STAT1	 -->	(ACK2) = \$88	
-STAT2	 -->	(RATE) = Link Cable Speed 
-STAT3	 -->	(SIZE) = Packet Size
+Delay between packets = (12.2 milliseconds) + ((RATE & 0x0F) * 1 millisecond)
+```
+Where:
+- Transfer time for all bytes: 4.71 milliseconds (always)
+- Delay between packets: 12.2 to 27.21 milliseconds
+
+This yields a range of 12.20 to 27.21 milliseconds for the total packet and delay time.
+
+
+##### Transmission phase
+In Transmission phase the Clock Rate setting is determined by the **last** RATE value
+transmitted before exiting Ping mode. The timing is more complex and is calculated
+as follows:
+```
+Delay between bytes =  ((RATE >> 4) x .106 milliseconds) + 0.887 milliseconds
 ```
 
-The new clock rate is only applied when entering the transmission phase; the
-ping phase runs at a constant 2048 bits-per-second. The formula for the new
-clock rate is as follows:
-
+Then total packet and delay time is whichever of the following is larger:
 ```
-DMG-07 Bits-Per-Second --> 4194304 / ((6 * RATE) + 512)
+((RATE & 0x0F) x 1 milliseconds) + 17 milliseconds
+or
+(Transfer time per byte + Delay between bytes) x Byte Count) + (between .36 to 2.15 milliseconds)
 ```
+Where:
+- Transfer time per byte: ~0.128 microseconds
+- Byte count: 4, 8, 12 or 16 depending on the setting for SIZE
+- It is not yet understood how to determine the additional amount added at the end of the formula.
+  
+This yields a range of 17.0 to 41.6 milliseconds for the total packet and delay time.
 
-The lowest setting (RATE = 0) runs the DMG-07 at the normal speed DMGs usually
-transfer data (1KB/s), while setting it to \$FF runs it close to the slowest
-speed (2042 bits-per-second).
-
+#### Packet Size
 SIZE sets the length of packets exchanged between all Game Boys. Nothing fancy,
-just the number of bytes in each packet. It probably shouldn't be set to zero.
+just the number of bytes in each packet. It probably should not be set to zero.
+
+SIZE sets the number of bytes sent from each Game Boy during a packet in 
+Transmission phase. The total number of bytes broadcasted by the DMG-07 in a
+packet will be SIZE x 4. The range of values which work without issue is 1 to 4.
+
 
 ### Transmission Phase
 
