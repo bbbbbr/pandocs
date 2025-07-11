@@ -229,21 +229,33 @@ the next packet. This means there is a 1 packet delay between when the Game Boys
 send data and when they all receive the packet which combines all their data together.
 
 
-For example, say the packet size is 2 bytes; the flow of data would look like this.
+For example, say the packet size is 2 bytes; the flow of data for two consecutive
+packets would look like this.
+- The format shown for a player byte is P\[player num\].\[packet num\], so P3.1 is player 3, packet 1.
 - Note: When a byte in the DMG-07 column is received the matching byte in the Reply column
 should be loaded into the [SB] register as a reply that will be transmitted during the next
 serial transfer.
 
-Packet Byte | Received From<br>DMG-07 | P1 reply    | P2 reply    | P3 reply    | P4 reply
-------------|-------------------------|-------------|-------------|-------------|-----------
-1           | P1 (byte 1)             | P1 (byte 1) | P2 (byte 1) | P3 (byte 1) | P4 (byte 1)
-2           | P1 (byte 2)             | P1 (byte 2) | P2 (byte 2) | P3 (byte 2) | P4 (byte 2)
-3           | P2 (byte 1)             | 0           | 0           | 0           | 0 
-4           | P2 (byte 2)             | 0           | 0           | 0           | 0
-5           | P3 (byte 1)             | 0           | 0           | 0           | 0 
-6           | P3 (byte 2)             | 0           | 0           | 0           | 0
-7           | P4 (byte 1)             | 0           | 0           | 0           | 0 
-8           | P4 (byte 2)             | 0           | 0           | 0           | 0
+Packet Byte | Received From<br>DMG-07 | P1 reply      | P2 reply      | P3 reply      | P4 reply
+------------|-------------------------|---------------|---------------|---------------|-----------
+1           | P1.0 (byte 1)           | P1.1 (byte 1) | P2.1 (byte 1) | P3.1 (byte 1) | P4.1 (byte 1)
+2           | P1.0 (byte 2)           | P1.1 (byte 2) | P2.1 (byte 2) | P3.1 (byte 2) | P4.1 (byte 2)
+3           | P2.0 (byte 1)           | 0             | 0             | 0             | 0 
+4           | P2.0 (byte 2)           | 0             | 0             | 0             | 0
+5           | P3.0 (byte 1)           | 0             | 0             | 0             | 0 
+6           | P3.0 (byte 2)           | 0             | 0             | 0             | 0
+7           | P4.0 (byte 1)           | 0             | 0             | 0             | 0 
+8           | P4.0 (byte 2)           | 0             | 0             | 0             | 0
+Next Packet | | | | 
+1           | P1.1 (byte 1)             | P1.2 (byte 1) | P2.2 (byte 1) | P3.2 (byte 1) | P4.2 (byte 1)
+2           | P1.1 (byte 2)             | P1.2 (byte 2) | P2.2 (byte 2) | P3.2 (byte 2) | P4.2 (byte 2)
+3           | P2.1 (byte 1)             | 0             | 0             | 0             | 0 
+4           | P2.1 (byte 2)             | 0             | 0             | 0             | 0
+5           | P3.1 (byte 1)             | 0             | 0             | 0             | 0 
+6           | P3.1 (byte 2)             | 0             | 0             | 0             | 0
+7           | P4.1 (byte 1)             | 0             | 0             | 0             | 0 
+8           | P4.1 (byte 2)             | 0             | 0             | 0             | 0
+
 
 All connected Game Boys should send their data into the buffer during the first few
 transfers. Here, the packet size is 2 bytes, so each Game Boy should submit their data
@@ -294,13 +306,16 @@ Byte 1 |$81 | $81 | Game Boy sends it's last transmission data (\$81)
 Byte 2 |$A5 | $00 | Data from Player 2 (\$A5)
 Byte 3 |$A5 | $00 | Data from Player 3 (\$A5)
 Byte 4 |$A5 | $00 | Data from Player 4 (\$A5)
+|  |  | 
 Byte 1 |$81 | $FF | Game Boy initiates ping restart (4 x \$FF)
 Byte 2 |$A5 | $FF | 
 Byte 3 |$A5 | $FF | 
 Byte 4 |$A5 | $FF | 
+|  |  | 
 Byte 1 |$FF | $00 | Start of switch to ping indicator from DMG-07 (4 x \$FF)
 Byte 2 |$FF | $00 | 
 Byte 3 |$FF | $00 | 
+|  |  | 
 Byte 4 |$FF | $00 | Final switch to ping indicator from DMG-07
 Byte 1 |$FE | $00 | Now returned to ping phase, start of first Ping packet
 Byte 2 |$01 | $88 | 
