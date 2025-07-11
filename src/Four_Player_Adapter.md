@@ -48,7 +48,7 @@ The power-up timing for ping packets is as follows:
 This means one ping packet with 4 bytes and it's subsequent delay takes a little
 more time than a single Game Boy video frame.
 
-### Ping packet fields
+### Ping Packet Fields
 
 The ping data received by each Game Boy looks like this:
 Byte | Value | Description
@@ -59,8 +59,8 @@ Byte | Value | Description
   4  |   ??  | STAT3
 
 The chart below illustrates how Game Boys should respond to bytes in a ping packet.
-- Note: When a byte on the left side of the chart is received the matching byte on the right
-side of the chart should be loaded into the [SB] register as a reply that will be transmitted
+- Note: When a byte in the DMG-07 column is received the matching byte in the Reply
+column should be loaded into the [SB] register as a reply that will be transmitted
 during the next serial transfer.
 
 Received From DMG-07 | Game Boy reply sent during next transfer
@@ -82,7 +82,7 @@ Transmission phases. It is sent in response to the STAT2 byte.
 Note: In both phases the value \$00 for RATE has special behavior where it does not
 change the speed, so it should not be used.
 
-#### RATE in Ping phase
+#### RATE in Ping Phase
 In Ping phase RATE only adjusts the delay between packets and changes take effect
 immediately upon the next packet. The timing is calculated as follows:
 ```
@@ -94,7 +94,7 @@ Where:
 
 This yields a range of 12.20 to 27.21 milliseconds for the total packet and delay time.
 
-#### RATE in Transmission phase
+#### RATE in Transmission Phase
 In Transmission phase the Clock Rate setting is determined by the **last** RATE value
 transmitted before exiting Ping mode. The timing is more complex and is calculated
 as described below.
@@ -126,7 +126,7 @@ For example if SIZE is 3 then the total packet size is 12 bytes (3 x 4).
 
 The range of values which work without issue is 1 to 4.
 
-### Ping Connection status
+### Ping Connection Status
 
 The 3 STAT bytes sent by the DMG-07 indicate the current connection status of all
 the Game Boys. Each byte is usually the same, however, sometimes the status can
@@ -174,90 +174,103 @@ situation Player 4 wouldn't suddenly become Player 2.
 
 ## Transmission Phase
 
-TODO:
-  **- All conneced Game Boys will receive 4 x 0xCC signal during Ping/Ping phase
-    - when (usually) Player 1 sends 4 x 0xAA to initiate the switch from Ping -> Transmission
-  - Any Player can send the 0xAA mode switch request, not just Player 1**
 
-When the master Game Boy (Player 1) is ready, it should send 4 bytes
-(`AA AA AA AA`, if those are actually required should be investigated further).
-This alerts the DMG-07 to start the transmission phase. The RATE and SIZE parameters 
-are applied at this point. The protocol is simple: Each Game Boy sends a packet to
-the DMG-07 simultaneously, then the DMG-07 outputs each packet to all connected
-Game Boys. All data is buffered, so there is a 4 packet delay after each Game
-Boy submits their data (the delay is still 4 packets long even if some Game Boys
-are not connected). For example, say the packet size is 4 bytes; the flow of
-data would look like this when sending:
+### Entering Transmission phase
 
-P1 send       | P2 send       | P3 send       | P4 send       | Transfer count
---------------|---------------|---------------|---------------|-----------------------------
-P1 (byte 1)   | P2 (byte 1)   | P3 (byte 1)   | P4 (byte 1)   | 0
-P1 (byte 2)   | P2 (byte 2)   | P3 (byte 2)   | P4 (byte 2)   | 1
-P1 (byte 3)   | P2 (byte 3)   | P3 (byte 3)   | P4 (byte 3)   | 2
-P1 (byte 4)   | P2 (byte 4)   | P3 (byte 4)   | P4 (byte 4)   | 3
-0             | 0             | 0             | 0             | 4 (Typically supposed to be zero, but DMG-07 ignores anything here)
-0             | 0             | 0             | 0             | 5
-0             | 0             | 0             | 0             | 6
-0             | 0             | 0             | 0             | 7
-0             | 0             | 0             | 0             | 8
-0             | 0             | 0             | 0             | 9
-0             | 0             | 0             | 0             | 10
-0             | 0             | 0             | 0             | 11
-0             | 0             | 0             | 0             | 12
-0             | 0             | 0             | 0             | 13
-0             | 0             | 0             | 0             | 14
-0             | 0             | 0             | 0             | 15
+In ping phase when the connected Game Boys are ready then one of them (typically Player 1)
+should send the Begin Transmission sequence, which is 4 bytes of \$AA in a row
+(`AA AA AA AA`). This causes the DMG-07 to switch to the transmission phase.
 
-And when receiving, the flow of data would look like this:
+As soon as the third consecutive \$AA byte is received by the DMG-07 it will begin
+transmitting four bytes of \$CC in a row (`CC CC CC CC`). This is the indicator that
+connected Game Boys should use for switching to transmission mode.
 
-P1 receive    | P2 receive    | P3 receive    | P4 receive    | Transfer count
---------------|---------------|---------------|---------------|-----------------------------
-P1 (byte 1)   | P1 (byte 1)   | P1 (byte 1)   | P1 (byte 1)   | 16
-P1 (byte 2)   | P1 (byte 2)   | P1 (byte 2)   | P1 (byte 2)   | 17
-P1 (byte 3)   | P1 (byte 3)   | P1 (byte 3)   | P1 (byte 3)   | 18
-P1 (byte 4)   | P1 (byte 4)   | P1 (byte 4)   | P1 (byte 4)   | 19
-P2 (byte 1)   | P2 (byte 1)   | P2 (byte 1)   | P2 (byte 1)   | 20
-P2 (byte 2)   | P2 (byte 2)   | P2 (byte 2)   | P2 (byte 2)   | 21
-P2 (byte 3)   | P2 (byte 3)   | P2 (byte 3)   | P2 (byte 3)   | 22
-P2 (byte 4)   | P2 (byte 4)   | P2 (byte 4)   | P2 (byte 4)   | 23
-P3 (byte 1)   | P3 (byte 1)   | P3 (byte 1)   | P3 (byte 1)   | 24
-P3 (byte 2)   | P3 (byte 2)   | P3 (byte 2)   | P3 (byte 2)   | 25
-P3 (byte 3)   | P3 (byte 3)   | P3 (byte 3)   | P3 (byte 3)   | 26
-P3 (byte 4)   | P3 (byte 4)   | P3 (byte 4)   | P3 (byte 4)   | 27
-P4 (byte 1)   | P4 (byte 1)   | P4 (byte 1)   | P4 (byte 1)   | 28
-P4 (byte 2)   | P4 (byte 2)   | P4 (byte 2)   | P4 (byte 2)   | 29
-P4 (byte 3)   | P4 (byte 3)   | P4 (byte 3)   | P4 (byte 3)   | 30
-P4 (byte 4)   | P4 (byte 4)   | P4 (byte 4)   | P4 (byte 4)   | 31
+After the DMG-07 finishes sending the indicator packet of \$CC bytes it will immediately
+begin sending data packets and the transmission phase RATE and SIZE settings take effect.
 
-Again, due to buffering, data output to the DMG-07 is actually delayed by
-several transfers according to the size of the packets. All connected Game
-Boys should send their data into the buffer during the first few transfers.
-Here, the packet size is 4 bytes, so each Game Boy should submit their data
-during the first 4 transfers. The other 12 transfers don't care what the
-Game Boys send; it won't enter into the buffer. The next 16 transfers return
-the packets each Game Boy previously sent (if no Game Boy exists for player,
-that slot is filled with zeroes).
+The following chart is an example of switching from Transmission back to Ping phase.
+- The SIZE setting is 1, meaning a total packet size of 4 bytes (1 x 4).
+- The other 3 connected Game Boys here all send \$A5 for their contribution to the shared packet.
+- Note: When a byte in the DMG-07 column is received the matching byte in the Reply column
+should be loaded into the [SB] register as a reply that will be transmitted during the next
+serial transfer.
 
-With the buffering system, Game Boys would normally be reading data from
-previous packets during transfers 0-15, in addition to sending new packets.
-Likewise, during transfers 16-19 each Game Boy is sending new packets. In
-effect, while receiving old data, Game Boys are supposed to pump new data into
-the network.
+Packet Byte | Received From<br>DMG-07 | Game Boy reply sent <br>during next transfer | Meaning
+------------|-------------------------|----------------------------------------------|--------
+Byte 1 |$FE | $88 | PING HEADER and ACK1 reply by Game Boy
+Byte 2 |$11 | $88 | STAT1 and ACK2 reply by Game Boy
+Byte 3 |$11 | $10 | STAT2 and RATE (\$10) reply by Game Boy
+Byte 4 |$11 | $01 | STAT2 and SIZE (\$01) reply by Game Boy
+ |  |  | 
+Byte 1 |$FE | $AA | Game Boy initiates switch to transmission (4 x \$AA)
+Byte 2 |$11 | $AA | 
+Byte 3 |$11 | $AA | 
+Byte 4 |$11 | $AA | 
+ |  |  | 
+Byte 1 |$CC | $00 | Start of transmission mode indicator from DMG-07 (4 x \$CC)
+Byte 2 |$CC | $00 | 
+Byte 3 |$CC | $00 | 
+Byte 4 |$CC | $00 | Final transmission mode indicator from DMG-07
+ |  |  | 
+Byte 1 |$AA | $12 | First data packet from DMG-07 (with random data)
+Byte 2 |$00 | $00 | 
+Byte 3 |$00 | $00 | 
+Byte 4 |$D6 | $00 | End of first data packet
+
+### Transmission Protocol
+
+The protocol is simple: At the same time the DMG-07 is sending data it received
+during the previous packet the Game Boys are replying with their new data in
+response. In effect, while receiving old data, Game Boys are supposed to pump
+new data into the network.
+
+Data received by the DMG-07 is buffered until it is broadcast during
+the next packet. This means there is a 1 packet delay between when the Game Boys
+send data and when they all receive the packet which combines all their data together.
+
+
+For example, say the packet size is 2 bytes; the flow of data would look like this.
+- Note: When a byte in the DMG-07 column is received the matching byte in the Reply column
+should be loaded into the [SB] register as a reply that will be transmitted during the next
+serial transfer.
+
+Packet Byte | Received From<br>DMG-07 | P1 reply    | P2 reply    | P3 reply    | P4 reply
+------------|-------------------------|-------------|-------------|-------------|-----------
+1           | P1 (byte 1)             | P1 (byte 1) | P2 (byte 1) | P3 (byte 1) | P4 (byte 1)
+2           | P1 (byte 2)             | P1 (byte 2) | P2 (byte 2) | P3 (byte 2) | P4 (byte 2)
+3           | P2 (byte 1)             | 0           | 0           | 0           | 0 
+4           | P2 (byte 2)             | 0           | 0           | 0           | 0
+5           | P3 (byte 1)             | 0           | 0           | 0           | 0 
+6           | P3 (byte 2)             | 0           | 0           | 0           | 0
+7           | P4 (byte 1)             | 0           | 0           | 0           | 0 
+8           | P4 (byte 2)             | 0           | 0           | 0           | 0
+
+All connected Game Boys should send their data into the buffer during the first few
+transfers. Here, the packet size is 2 bytes, so each Game Boy should submit their data
+during the first 2 transfers. The other 6 transfers don't care what the Game Boys send;
+it won't enter into the buffer. The next 8 transfers return the data each Game Boy
+previously sent (if no Game Boy exists for a player, that slot is filled with zeroes).
 
 When the DMG-07 enters the transmission phase, the buffer is initially filled
 with garbage data that is based on output the master Game Boy had sent during
-the ping phase. At this time, it is recommended to ignore the earliest packets
+the ping phase. At this time, it is recommended to ignore the first packet
 received, however, it is safe to start putting new, relevant data into the
 buffer.
 
 ## Restarting Ping Phase
 
 It's possible to restart the ping phase while operating in the transmission
-phase. To do so, any connected Game Boy can send 3 or more \$FF bytes in a row.
-The bytes alert the DMG-07 that the ping phase should begin again.
+phase. To do so, any connected Game Boy can send the Ping Restart sequence, which
+is 3 or more \$FF bytes in a row. This causes the DMG-07 to switch back to the ping
+phase.
+
+After the third consecutive \$FF byte is received and transmission of the current packet
+is completed the DMG-07 it will begin transmitting a packet where all the bytes are set
+to \$FF. This is the indicator that connected Game Boys should use for when to switch back
+to ping mode.
 
 As soon as the third consecutive \$FF byte is received by the DMG-07 it will begin
-transmitting a packet where all the bytes are set to \$FF. This is the signal that
+transmitting a packet where all the bytes are set to \$FF. This is the indicator that
 connected Game Boys should use for when to switch back to ping mode.
 
 To avoid false positives the Game Boys should only perform a switch to ping after
@@ -265,19 +278,19 @@ receving an entire packet of consecutive \$FF bytes. For example, if the SIZE
 setting is 3 then the total packet size is 12 bytes (3 x 4), which will be the
 number of consecutive \$FF bytes to require from the DMG-07 for a switch.
 
-After the DMG-07 finishes sending the packet of \$FF bytes it will immediately begin
-transmitting ping packets.
+After the DMG-07 finishes sending the indicator packet of \$FF bytes it will immediately
+begin transmitting ping packets.
 
 The following chart is an example of switching from Transmission back to Ping phase.
 - The SIZE setting is 1, meaning a total packet size of 4 bytes (1 x 4).
 - The other 3 connected Game Boys here all send \$A5 for their contribution to the shared packet.
-- Note: When a byte on the left side of the chart is received the matching byte on the right
-side of the chart should be loaded into the [SB] register as a reply that will be transmitted
-during the next serial transfer.
+- Note: When a byte in the DMG-07 column is received the matching byte in the Reply column
+should be loaded into the [SB] register as a reply that will be transmitted during the next
+serial transfer.
 
 Packet Byte | Received From<br>DMG-07 | Game Boy reply sent <br>during next transfer | Meaning
-----------------|-------------------------|-----------------------------------------|--------
-Byte 1 |$81 | $81 | Game Boy Sends it's last transmission data (\$81)
+------------|-------------------------|----------------------------------------------|--------
+Byte 1 |$81 | $81 | Game Boy sends it's last transmission data (\$81)
 Byte 2 |$A5 | $00 | Data from Player 2 (\$A5)
 Byte 3 |$A5 | $00 | Data from Player 3 (\$A5)
 Byte 4 |$A5 | $00 | Data from Player 4 (\$A5)
