@@ -113,11 +113,11 @@ respectively, such that they will get transferred out as STAT3 and the ID Byte o
 next packet get clocked in.
 
 The chart below illustrates how Game Boys should respond to bytes in a ping packet.
-When a byte on the left side of the chart is received the matching byte on the right
-side of the chart should be loaded into the SB register as a reply for the next byte
-transfer.
+- Note: When a byte on the left side of the chart is received the matching byte on the right
+side of the chart should be loaded into the SB register as a reply that will be transmitted
+during the next serial transfer.
 
-Received From<br>DMG-07 | Reply the Game Boy<br>loads into SB reg
+Received From DMG-07 | Game Boy reply sent during next transfer
 ----------|-----------------------
 \$FE	    | (ACK1) = \$88
 STAT1     | (ACK2) = \$88	
@@ -147,12 +147,14 @@ This yields a range of 12.20 to 27.21 milliseconds for the total packet and dela
 ##### Transmission phase
 In Transmission phase the Clock Rate setting is determined by the **last** RATE value
 transmitted before exiting Ping mode. The timing is more complex and is calculated
-as follows:
+as follows.
+
+First:
 ```
 Delay between bytes =  ((RATE >> 4) x .106 milliseconds) + 0.887 milliseconds
 ```
 
-Then total packet and delay time is whichever of the following is larger:
+Then the total packet and delay time will be whichever of the following is larger:
 ```
 ((RATE & 0x0F) x 1 milliseconds) + 17 milliseconds
 or
@@ -175,6 +177,12 @@ packet will be SIZE x 4. The range of values which work without issue is 1 to 4.
 
 
 ### Transmission Phase
+
+TODO:
+  **- All conneced Game Boys will receive 4 x 0xCC signal during Ping/Ping phase
+    - when (usually) Player 1 sends 4 x 0xAA to initiate the switch from Ping -> Transmission
+  - Any Player can send the 0xAA mode switch request, not just Player 1**
+
 
 When the master Game Boy (Player 1) is ready, it should send 4 bytes
 (`AA AA AA AA`, if those are actually required should be investigated further).
@@ -250,9 +258,42 @@ buffer.
 ### Restarting Ping Phase
 
 It's possible to restart the ping phase while operating in the transmission
-phase. To do so, the master Game Boy should send 4 or more bytes
-(`FF FF FF FF`, it's possible fewer \$FF bytes need to be sent,
-but this has not been extensively investigated yet). The bytes alert the DMG-07
-that the ping phase should begin again, after which it sends ping packets after
-a brief delay. During this delay, the transmission protocol is still working as
-intended until the switch happens.
+phase. To do so, any connected Game Boy can send 3 or more \$FF bytes in a row.
+The bytes alert the DMG-07 that the ping phase should begin again.
+
+As soon as the third consecutive \$FF byte is received by the DMG-07 it will begin
+transmitting a packet where all the bytes are set to \$FF. This is the signal that
+connected Game Boys should use for when to switch back to ping mode. To avoid false
+positives the Game Boys should only make the switch after an entire packet of
+consecutive \$FF bytes. For example, if the SIZE setting is 3 then the total packet
+size is 12 bytes (3 x 4), so the number of consecutive \$FF bytes to listen for from the
+DMG-07 is 12.
+
+After the DMG-07 finishes sending the packet of \$FF bytes it will immediately begin
+transmitting ping packets.
+
+The following chart is an example of switching from Transmission back to Ping phase.
+- The SIZE setting is 1 for a total packet size of 4 bytes
+- The other 3 connected Game Boys all send \$A5 for their contribution to the shared packet
+- Note: When a byte on the left side of the chart is received the matching byte on the right
+side of the chart should be loaded into the SB register as a reply that will be transmitted
+during the next serial transfer.
+
+Packet Byte | Received From<br>DMG-07 | Game Boy reply sent <br>during next transfer | Meaning
+----------------|-------------------------|-----------------------------------------|--------
+Byte 1 |$81 | $81 | Game Boy Sends it's last transmission data (\$81)
+Byte 2 |$A5 | $00 | Data from Player 2 (\$A5)
+Byte 3 |$A5 | $00 | Data from Player 3 (\$A5)
+Byte 4 |$A5 | $00 | Data from Player 4 (\$A5)
+Byte 1 |$81 | $FF | Game Boy initiates ping restart (4 x \$FF)
+Byte 2 |$A5 | $FF | 
+Byte 3 |$A5 | $FF | 
+Byte 4 |$A5 | $FF | 
+Byte 1 |$FF | $00 | Start of switch to ping indicator from DMG-07 (4 x \$FF)
+Byte 2 |$FF | $00 | 
+Byte 3 |$FF | $00 | 
+Byte 4 |$FF | $00 | Final switch to ping indicator from DMG-07
+Byte 1 |$FE | $00 | Now returned to ping phase, start of first Ping packet
+Byte 2 |$01 | $88 | 
+Byte 3 |$01 | $88 | 
+Byte 4 |$F1 | $00 | 
